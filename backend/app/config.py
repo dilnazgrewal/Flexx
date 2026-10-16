@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     tax_rate: float = 0.08
 
     seed_admin_email: str = "admin@flexx.com"
-    seed_admin_password: str = "FlexxAdmin123!"
+    seed_admin_password: str = "change-me-before-seeding"
 
 
     @field_validator("cors_origins", mode="before")
