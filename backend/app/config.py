@@ -2,8 +2,10 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -28,7 +30,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
-    cors_origins: list[str] = [
+    # NoDecode stops pydantic-settings JSON-decoding this before the
+    # validator below runs, so CORS_ORIGINS can be plain comma-separated text.
+    cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
@@ -41,6 +45,21 @@ class Settings(BaseSettings):
 
     seed_admin_email: str = "admin@flexx.com"
     seed_admin_password: str = "FlexxAdmin123!"
+
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, v):
+        """Accept "a,b" as well as JSON, so CORS_ORIGINS can be typed into a
+        hosting dashboard without JSON quoting."""
+        if not isinstance(v, str):
+            return v
+        text = v.strip()
+        if text.startswith("["):
+            import json
+
+            return json.loads(text)
+        return [o.strip() for o in text.split(",") if o.strip()]
 
 
 @lru_cache

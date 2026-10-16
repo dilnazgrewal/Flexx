@@ -6,3 +6,6 @@ pydantic-settings>=2.6.0
 python-multipart>=0.0.12
 email-validator>=2.2.0
 PyJWT>=2.9.0
+
+# PostgreSQL driver. Not needed for local SQLite, required in production.
+psycopg[binary]>=3.2.0
