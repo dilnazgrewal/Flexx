@@ -1,0 +1,9 @@
+# Vercel builds the Next.js app at the repo root only.
+# These are separate services, deployed elsewhere:
+#   backend/  -> FastAPI, runs on Render/Railway (Vercel cannot host it)
+#   my-bot/   -> Cloudflare Worker, deployed with `wrangler deploy`
+# Excluding them stops Vercel's multi-service detector guessing, and
+# keeps the upload small.
+backend/
+my-bot/
+BUILD-NOTES.md
