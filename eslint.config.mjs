@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+
+    // Vendored from the Session 10 starter kit and kept byte-identical.
+    "public/chat-widget.js",
+    "my-bot/**",
   ]),
 ]);
 

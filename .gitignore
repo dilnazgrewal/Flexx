@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the templates carry no secrets and must be committed,
+# so a new clone knows which variables it needs.
+!.env.example
+!**/.env.example
 
 # vercel
 .vercel
