@@ -1,9 +1,21 @@
 # FLEXX — Full-Stack Protein Storefront
 
 A complete e-commerce site: a **Next.js 16 / React 19 / Tailwind v4** storefront on top of a
-**Python FastAPI + SQLAlchemy + SQLite** backend. Customers can browse the catalogue, filter and
+**Python FastAPI + SQLAlchemy** backend. Customers can browse the catalogue, filter and
 search, read and write reviews, build a cart, apply coupons, check out, and track orders — guest
 or signed in.
+
+**Live:** <https://flexx-woad.vercel.app>
+
+| Layer | Local | Deployed |
+| ----- | ----- | -------- |
+| Storefront | `localhost:3000` | Vercel |
+| API | `127.0.0.1:8000` | Render — <https://flexx-api.onrender.com> |
+| Database | SQLite file | Neon (PostgreSQL 18) |
+| Chat backend | `wrangler dev` | Cloudflare Worker |
+
+The free tiers have two visible limits: Render sleeps after 15 minutes idle, so the first request
+after a quiet spell takes ~50s, and Groq allows roughly 3 chatbot conversations per minute.
 
 > For the story of how it was built — the design decisions, the bugs, and the two chatbot
 > architectures that were thrown away — see [BUILD-NOTES.md](BUILD-NOTES.md).
@@ -38,10 +50,21 @@ Open <http://localhost:3000>.
 
 ### Demo accounts
 
-| Role     | Email             | Password        |
-| -------- | ----------------- | --------------- |
-| Customer | demo@flexx.com    | `DemoUser123!`  |
-| Admin    | admin@flexx.com   | `FlexxAdmin123!`|
+| Role     | Email             | Password                          |
+| -------- | ----------------- | --------------------------------- |
+| Customer | demo@flexx.com    | `DemoUser123!`                    |
+| Admin    | admin@flexx.com   | set via `SEED_ADMIN_PASSWORD`     |
+
+These are seed accounts for a **local** database. The seeded admin is a real login on whatever
+`DATABASE_URL` points at, so set `SEED_ADMIN_PASSWORD` before seeding anything public — and never
+commit the value. To change it on a database that is already seeded:
+
+```bash
+cd backend && .venv\Scripts\python.exe set_admin_password.py
+```
+
+It prompts for the password rather than taking it as an argument, so it stays out of shell
+history, scrollback and the process list.
 
 ### Coupons
 
@@ -56,7 +79,8 @@ Open <http://localhost:3000>.
 ## Architecture
 
 ```
-Browser ──► Next.js (3000) ──► FastAPI (8000) ──► SQLAlchemy ──► SQLite
+Browser ──► Next.js (3000) ──► FastAPI (8000) ──► SQLAlchemy ──► SQLite (local)
+                                                                 └ PostgreSQL (deployed)
             │                   │
             │ server components │ catalogue reads are rendered on the server
             └ client components ┘ cart / auth / checkout run in the browser
@@ -195,7 +219,13 @@ Set in **Cloudflare → your Worker → Settings → Variables and Secrets**, ne
 | `LLM_BASE_URL` | Text | `https://api.groq.com/openai/v1` |
 | `LLM_MODEL` | Text | `openai/gpt-oss-120b` |
 | `LLM_API_KEY` | **Secret** | your `gsk_...` key |
-| `ALLOWED_ORIGINS` | Text | `*` while testing, then your real site address |
+| `ALLOWED_ORIGINS` | Text | exact origins, comma-separated — see below |
+
+`ALLOWED_ORIGINS` is an exact-match list, currently
+`https://flexx-woad.vercel.app,http://localhost:3000,http://127.0.0.1:3000`. The localhost entries
+keep `npm run dev` working; locking it to the production domain alone breaks local development.
+Leaving it as `*` lets any website — or plain `curl` — spend your LLM quota through your Worker.
+Vercel **preview** deploys get a new hostname each time and will be blocked unless added here.
 
 Then put the Worker's address in `.env.local` and restart `npm run dev`:
 
@@ -263,25 +293,49 @@ Frontend — `.env.local`:
 
 ```
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api
+NEXT_PUBLIC_CHAT_ENDPOINT=https://flexx-bot.dilnazkaur285.workers.dev/chat
 ```
+
+`.env.local` is gitignored, so the host never sees it. The deployed copies live in **Vercel →
+Settings → Environment Variables**, and `NEXT_PUBLIC_*` values are compiled into the browser
+bundle at build time — changing one in the dashboard does nothing until you redeploy.
 
 Backend — create `backend/.env` to override any value in `app/config.py`:
 
 ```
 DATABASE_URL=sqlite:///./flexx.db
-JWT_SECRET=change-me-in-production
+JWT_SECRET=generate-with-python-c-import-secrets-print-secrets.token_hex-32
+SEED_ADMIN_PASSWORD=set-a-real-password-here
 FREE_SHIPPING_THRESHOLD=50
 SHIPPING_FLAT_RATE=4.99
 TAX_RATE=0.08
 ```
 
-### Moving to PostgreSQL
+### PostgreSQL
 
-Nothing in the code is SQLite-specific. Install a driver and change one line:
+Nothing in the code is SQLite-specific — `database.py` only branches on the `sqlite` prefix to set
+`check_same_thread` and the `foreign_keys` pragma. Production runs on Neon with one changed line:
 
 ```
-DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/flexx
+DATABASE_URL=postgresql+psycopg://user:password@host.neon.tech/neondb?sslmode=require
 ```
+
+Two things to get right:
+
+* **`postgresql+psycopg://`, not `postgresql://`.** The bare scheme makes SQLAlchemy look for
+  `psycopg2`, which is not installed, and you get `ModuleNotFoundError: No module named 'psycopg2'`
+  — an error that reads like a missing database but is only a driver name.
+* **Render's free tier has no persistent disk**, which is why a SQLite file cannot be used there:
+  it would be wiped on every restart and deploy.
+
+Check a connection without starting the server:
+
+```bash
+cd backend && .venv\Scripts\python.exe check_db.py
+```
+
+It masks the password, and reports separately on "still on SQLite", "wrong scheme" and
+"connection refused".
 
 ---
 
